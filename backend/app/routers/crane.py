@@ -30,6 +30,25 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/workload")
+def workload_stats(
+    keyword: str | None = Query(default=None, description="按设备编号检索"),
+    shift: str | None = Query(default=None, description="早班、中班、晚班"),
+) -> dict[str, Any]:
+    """岸桥作业量统计：明细、班次视图与待核实记录一次取回；取数失败时给出可读说明，前端据此提示重试。"""
+    try:
+        return service.workload_view(keyword=keyword, shift=shift)
+    except Exception as exc:  # noqa: BLE001 - 统计口径出错时要把原因带回给值班页面
+        raise HTTPException(status_code=500, detail=f"岸桥作业量统计取数失败：{exc}") from exc
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出岸桥作业清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "crane", "total": total, "items": items}
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条岸桥明细；不存在时给出可读的错误说明。"""
@@ -56,10 +75,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出岸桥作业清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "crane", "total": total, "items": items}
